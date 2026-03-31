@@ -1,23 +1,38 @@
 const express = require('express');
 const { Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
-const cors = require('cors');
 
 const app = express();
 app.use(express.json());
-app.use(cors());
 
-// 👇👇👇 ЗДЕСЬ ЗАМЕНИ НА СВОИ ДАННЫЕ 👇👇👇
-const DISCORD_BOT_TOKEN = 'MTQ4NzI5NDc3MzM1MzI1MDg3Ng.GuDNX2._zhH_LCKS_OuT-3yOLT4IGX7fvWi2POB6aOAKw';
-const DISCORD_CHANNEL_ID = '1487294773353250876';
+// Читаем переменные окружения
+const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
+const DISCORD_CHANNEL_ID = process.env.DISCORD_CHANNEL_ID;
+
+console.log("=== ПРОВЕРКА ПЕРЕМЕННЫХ ===");
+console.log("Token exists:", DISCORD_BOT_TOKEN ? "YES" : "NO");
+console.log("Token length:", DISCORD_BOT_TOKEN ? DISCORD_BOT_TOKEN.length : 0);
+console.log("Channel ID:", DISCORD_CHANNEL_ID);
+console.log("==========================");
+
+if (!DISCORD_BOT_TOKEN || !DISCORD_CHANNEL_ID) {
+    console.error('❌ ОШИБКА: Не заданы переменные окружения!');
+    console.error('Нужно добавить: DISCORD_BOT_TOKEN и DISCORD_CHANNEL_ID');
+    process.exit(1);
+}
 
 const bot = new Client({
-    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent]
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent
+    ]
 });
 
 const commandQueue = [];
 
 bot.once('ready', () => {
     console.log(`✅ Бот ${bot.user.tag} запущен!`);
+    console.log(`📡 Канал: ${DISCORD_CHANNEL_ID}`);
 });
 
 bot.on('interactionCreate', async (interaction) => {
@@ -26,10 +41,8 @@ bot.on('interactionCreate', async (interaction) => {
     const [action, userId] = interaction.customId.split('_');
     await interaction.deferReply({ ephemeral: true });
     
-    commandQueue.push({ userId: parseInt(userId), action: action, timestamp: Date.now() });
-    
-    const actionText = action === 'kick' ? 'кикнут' : (action === 'warn' ? 'предупрежден' : 'убит');
-    await interaction.editReply(`✅ Игрок ${userId} будет ${actionText}!`);
+    commandQueue.push({ userId: parseInt(userId), action: action });
+    await interaction.editReply(`✅ ${action} для игрока ${userId}`);
     
     try {
         const msg = await interaction.channel.messages.fetch(interaction.message.id);
@@ -40,10 +53,11 @@ bot.on('interactionCreate', async (interaction) => {
 
 app.post('/api/report', async (req, res) => {
     const { playerName, userId, reason, severity } = req.body;
-    console.log(`📢 ${playerName} (${userId}) - ${reason}`);
+    console.log(`📢 Репорт: ${playerName} (${userId}) - ${reason}`);
     
     try {
         const channel = await bot.channels.fetch(DISCORD_CHANNEL_ID);
+        
         const color = severity === 'слабо' ? 0xFFA500 : (severity === 'сильно' ? 0xFF5500 : 0xFF0000);
         
         const embed = new EmbedBuilder()
@@ -68,7 +82,8 @@ app.post('/api/report', async (req, res) => {
         await channel.send({ embeds: [embed], components: [row] });
         res.json({ success: true });
     } catch (error) {
-        res.status(500).json({ success: false });
+        console.error('Ошибка:', error.message);
+        res.status(500).json({ success: false, error: error.message });
     }
 });
 
@@ -85,6 +100,11 @@ app.get('/api/commands/:userId', (req, res) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`🌐 Сервер на порту ${PORT}`);
+    console.log(`🚀 Готов к работе!`);
 });
 
-bot.login(DISCORD_BOT_TOKEN);
+// Запускаем бота
+bot.login(DISCORD_BOT_TOKEN).catch(err => {
+    console.error('❌ Ошибка логина:', err.message);
+    process.exit(1);
+});
